@@ -1,0 +1,195 @@
+#!/usr/bin/python3
+# coding: UTF-8
+"""
+** POUET TIME **
+
+Original idea from sebsauvage. o/
+
+** DESCRIPTION **
+Gather all shared urls on given base and extract audio files coming from YouTube (for now...) 
+
+** REQUIREMENTS **
+- youtube-dl                 | MEDIA HANDLING
+- sqlite3                    | DATABASE ACCESS
+- urllib3                    | HTTPS REQUEST
+- bs4 (aka BeautifulSoup)    | PARSER
+- lxml                       | PARSER
+
+Install: $ sudo pip3 install    youtube-dl sqlite3 urllib3 bs4 lxml
+Upgrade: $ sudo pip3 install -U youtube-dl sqlite3 urllib3 bs4 lxml
+
+** AUDIO SOURCES (HARD CODED FOR NOW..) **
+https://pouet.audio
+https://pouet.audio/?debut_pouets=6449#pagination_items
+
+** USE CASE **
+
+Without arguments: Gather / Compare / Download audio files
+With arguments   : Regex search mode (for database entries)
+
+"""
+
+import os,sys,re,urllib3,time
+from sqlite3 import dbapi2 as sqlite
+from bs4 import BeautifulSoup
+from subprocess import check_output, CalledProcessError
+from optparse import OptionParser
+
+#//////////////////////////////////////////////////////////////////////////////////////
+#//////////////////////////////////////////////////////////////////////////////////////
+
+class quickDB(dict):
+	""" Quick DataBase Object (Using SQLite)
+		Mainly a dictionary with DB access methods
+		{ key = url : value = title }
+	"""
+	def __init__(self,filename):
+		""" Take a file name """
+		dict.__init__(self)
+		self.filename = filename if filename.endswith(".sqlite") else filename+'.sqlite'
+		self.db = sqlite.connect( self.filename )	
+		if not os.path.isfile(self.filename):
+			print("++ Creating Database %s"%self.filename,end='')
+			self.db.execute("create table data (key PRIMARY KEY,value)")
+		else:
+			print("-- Existing Database %s"%self.filename,end='')
+		self.load()
+		print(" (loaded: %d files)"%(len(self)))
+
+	def getkeys(self):
+		""" Returns keys from database (and self.keys() for dictionary access) """
+		try:    KEYS = [row[0] for row in self.db.execute("select key from data").fetchall()]
+		except: KEYS = []
+		return KEYS
+
+	def getvalues(self):
+		""" Return values from database (and self.values() for dictionary access) """
+		try:    VALUES = [row[0] for row in self.db.execute("select value from data").fetchall()]
+		except: VALUES = []
+		return VALUES
+
+	def load(self):
+		""" Update dictionary with database """
+		keys = self.getkeys()
+		values = self.getvalues()
+		for k,v in zip(keys,values):
+			self.update({k:v})
+
+	def setitem(self, key, item):
+		""" Write item corresponding to key into database (along with dictionary) """
+		if key not in self.keys():
+			self.db.execute("insert into data (key,value) values (?,?)",(key, item))
+		elif self.db.execute("select key from data where key=?",(key,)).fetchone():
+			self.db.execute("update data set value=? where key=?",(item,key))
+		self.db.commit()
+		self[key] = item
+
+def read_audio( URL , USER):
+	""" Parse YouTube urls from given URL """
+	HTTPS = urllib3.PoolManager()
+	hrefs = None
+	with HTTPS.request("GET",URL,timeout=10,headers={'User-Agent':USER}) as response:# MAKE REQUEST
+		text = response.data.decode('utf-8')                                    	 # DECODE TEXT
+		html = BeautifulSoup(text,'lxml')                                       	 # PARSE HTML WITH LXML PARSER
+		hrefs = [ a.get('href') for a in html.find_all('a') if a.get('href') ]  	 # FILTER: HREF TAGS
+		hrefs = [ h for h in hrefs if h.count('youtube.com')+h.count('youtu.be') ]   # FILTER: YOUTUBE ADDRESSES
+	return hrefs
+
+def gather_audio(filename, baseurl):
+	""" Use database to download what we don't have yet! """
+	SONG_DB = quickDB( filename )                           # AUDIO DATABASE
+	MAX_MINUTES = 20
+	URLS = list( SONG_DB.keys() )                           # DATABASE FILES
+	USER = "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:53.0) Gecko/20100101 Firefox/53.0"
+	
+	print("-- Looking on %s"%baseurl)
+
+	hrefs = read_audio( baseurl, USER )                     # REQUEST & PARSE SHARED AUDIO
+	hrefs = [ h for h in hrefs if h not in URLS ]           # SKIP WHAT IS ALREADY IN DB
+	hrefs = [ h for h in hrefs if not h.count('playlist') ] # SKIP PLAYLISTS FOR NOW
+
+	print( "++ %d new audio files"%len(hrefs) )
+
+	# FOR ALL NEW URLS
+	for URL in hrefs:
+		# GET TITLE + DURATION
+		TITLE = None
+		command = 'youtube-dl --user-agent "{}" -s --get-title --get-duration {}'.format(USER,URL)
+		try:
+			TITLE = check_output(command, shell=1).strip()
+			TITLE = TITLE.decode('utf-8')
+			time.sleep(0.5)
+		except Exception as this_exception:
+			print( "%s"%this_exception )
+			continue
+		split = TITLE.splitlines()
+		split = split[:2] if len(split)>2 else split		
+		TITLE,DURATION = split[:]
+
+		# PARSING A BIT THE TITLE
+		for k,v in {"\[":"","\]":"","\'":"\'",'\"':"","\(":"","\)":""}.items(): TITLE.replace(k,v) #TITLE = re.sub(k,v,TITLE)
+		TITLE = re.sub('  *', ' ',TITLE)	
+		FILENAME = TITLE + '.mp3'
+		# PRINT OUT NEW FILE COORDINATES
+		print('-- %-50s (%s) @ %s '%(TITLE,DURATION,URL))
+		
+		# DURATION CRITERIA (too long=true=skip) ; COMMENT EVENTUALLY OR MAX_MINUTES=0
+		times = DURATION.split(':')[::-1]
+		if MAX_MINUTES*(len(times)==3 or int( times[1] )>MAX_MINUTES):
+			#print("Duration is too long. We skip for now.")			
+			continue
+
+		# TESTING FILE ACTUAL PRESENCE
+		if os.path.isfile(FILENAME):
+			SONG_DB.setitem( URL,TITLE )
+			continue
+
+		# RETRIEVE AUDIO FILE
+		print( " - Downloading audio..." )
+		output = None
+		command = 'youtube-dl --socket-timeout 10 --user-agent "{}" -o "{}.%(ext)s" -x --audio-format mp3 --prefer-ffmpeg {}'.format(USER,FILENAME[:-4],URL)
+		try:
+			output = check_output(command, shell=1)
+			output = output.decode('utf-8')
+			time.sleep(0.5)
+		except Exception as this_exception:
+			print( "%s"%this_exception )
+			continue          
+		# SUCCESS: TAG THE FILE WITH URL
+		os.system('id3v2 --id3v2-only --song "%s" --comment "%s" "%s"'%(TITLE,URL.replace(':',''),FILENAME))
+		# WRITE DOWN URL+TITLE (DON'T DOWNLOAD TWICE, EVEN IF FILE IS REMOVED!)
+		SONG_DB.setitem( URL,TITLE )
+		print( '++ Saved as "%s"' % FILENAME )
+
+#//////////////////////////////////////////////////////////////////////////////////////
+#//////////////////////////////////////////////////////////////////////////////////////
+
+if __name__=='__main__':
+	
+	optparser = OptionParser()
+	optparser.add_option('-d','--directory',dest='directory',default='/home/duke/bot/pouetradio',help="Working directory")
+	optparser.add_option('-f','--filename',dest='database',default='pouet-audio',help="Database file name")
+	optparser.add_option('-b','--base',dest='urlbase',default='https://pouet.audio',help="Source URL")
+	optparser.add_option('-l','--list',dest='list',action='store_true', help="List actual database (complete list if no value, else returns what's correponsding to the given value in database)")
+
+	opts,args = optparser.parse_args()  # PARSE ARGUMENTS & OPTIONS
+	FILENAME = opts.database            # DATABASE FILE NAME
+	os.chdir( opts.directory )          # WORKING DIRECTORY
+
+	if opts.list:                                                        # LIST MODE:
+		DB = quickDB( FILENAME )										 # 
+		if args:                                                         # WITH ARGUMENTS:  
+			for u,t in zip( DB.keys() , DB.values() ):                        
+				l = "%-50s %s"%(t,u)
+				r = re.findall('.*%s.*'%' '.join(args), l, flags=re.I)   # INSENSITIVE CASE REGEX SEARCH
+				if r: print ('\n'.join(r))
+		else:                                                            # WITHOUT ARGUMENTS:
+			for u,t in zip( DB.keys() , DB.values() ):                   # LIST ALL DATABASE
+				print ("%-50s %s"%(t,u))
+			#print("-- %d files"%len(DB.keys()))	                     
+	elif args and 'doc' in args:                                         # IF 'doc' IN ARGUMENTS:
+		print(__doc__)                                                   # THROW DOC
+		sys.exit(0)
+	else:                                                                # MAIN OPERATION:
+		gather_audio( FILENAME, opts.urlbase )                           # GATHER SHARED AUDIO FROM GIVEN URL
+	
