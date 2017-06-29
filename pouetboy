@@ -25,7 +25,7 @@ https://pouet.audio/?debut_pouets=6449#pagination_items
 ** USE CASE **
 
 Without arguments: Gather / Compare / Download audio files
-With arguments   : Regex search mode (for database entries)
+With arguments   : Regex search mode in database
 
 """
 
@@ -50,9 +50,7 @@ class quickDB(dict):
 		if not os.path.isfile( self.filename ):
 			print("++ Creating Database %s"%self.filename,end='')
 			self.db = sqlite.connect( self.filename )
-			#self.db.execute("create table data (key PRIMARY KEY,value)")
 			self.db.execute("CREATE TABLE data (id PRIMARY KEY, track STRING, address STRING)")
-			#self.db.execute("CREATE UNIQUE INDEX data_idx ON data (id, track, address)")
 		else:
 			print("-- Existing Database %s"%self.filename,end='')
 			self.db = sqlite.connect( self.filename )
@@ -80,10 +78,6 @@ class quickDB(dict):
 
 	def setitem(self, key, item):
 		""" Write item corresponding to key into database (along with dictionary) """
-#		if key not in self.keys():
-#			self.db.execute("insert into data (key,value) values (?,?)",(key, item))
-#		elif self.db.execute("select key from data where key=?",(key,)).fetchone():
-#			self.db.execute("update data set value=? where key=?",(item,key))
 		self.db.execute('INSERT OR REPLACE INTO data VALUES (NULL,"""%s""","""%s""")'%(key,item))
 		self.db.commit()
 		self[key] = item
@@ -195,8 +189,7 @@ if __name__=='__main__':
 				if r: print ('\n'.join(r))
 		else:                                                            # WITHOUT ARGUMENTS:
 			for u,t in zip( DB.keys() , DB.values() ):                   # LIST ALL DATABASE
-				print ("%-50s %s"%(t,u))
-			#print("-- %d files"%len(DB.keys()))	                     
+				print ("%-50s %s"%(t,u))	                     
 	elif args and 'doc' in args:                                         # IF 'doc' IN ARGUMENTS:
 		print(__doc__)                                                   # THROW DOC
 		sys.exit(0)
