@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python3 -uB
 # coding: UTF-8
 """
 ** POUET TIME **
@@ -46,25 +46,28 @@ class quickDB(dict):
 	def __init__(self,filename):
 		""" Take a file name """
 		dict.__init__(self)
-		self.filename = filename if filename.endswith(".sqlite") else filename+'.sqlite'
-		self.db = sqlite.connect( self.filename )	
-		if not os.path.isfile(self.filename):
+		self.filename = filename if filename.endswith(".sqlite") else filename+'.sqlite'		
+		if not os.path.isfile( self.filename ):
 			print("++ Creating Database %s"%self.filename,end='')
-			self.db.execute("create table data (key PRIMARY KEY,value)")
+			self.db = sqlite.connect( self.filename )
+			#self.db.execute("create table data (key PRIMARY KEY,value)")
+			self.db.execute("CREATE TABLE data (id PRIMARY KEY, track STRING, address STRING)")
+			#self.db.execute("CREATE UNIQUE INDEX data_idx ON data (id, track, address)")
 		else:
 			print("-- Existing Database %s"%self.filename,end='')
+			self.db = sqlite.connect( self.filename )
 		self.load()
 		print(" (loaded: %d files)"%(len(self)))
 
 	def getkeys(self):
 		""" Returns keys from database (and self.keys() for dictionary access) """
-		try:    KEYS = [row[0] for row in self.db.execute("select key from data").fetchall()]
+		try:    KEYS = [row[0] for row in self.db.execute("select track from data").fetchall()]
 		except: KEYS = []
 		return KEYS
 
 	def getvalues(self):
 		""" Return values from database (and self.values() for dictionary access) """
-		try:    VALUES = [row[0] for row in self.db.execute("select value from data").fetchall()]
+		try:    VALUES = [row[0] for row in self.db.execute("select address from data").fetchall()]
 		except: VALUES = []
 		return VALUES
 
@@ -77,10 +80,11 @@ class quickDB(dict):
 
 	def setitem(self, key, item):
 		""" Write item corresponding to key into database (along with dictionary) """
-		if key not in self.keys():
-			self.db.execute("insert into data (key,value) values (?,?)",(key, item))
-		elif self.db.execute("select key from data where key=?",(key,)).fetchone():
-			self.db.execute("update data set value=? where key=?",(item,key))
+#		if key not in self.keys():
+#			self.db.execute("insert into data (key,value) values (?,?)",(key, item))
+#		elif self.db.execute("select key from data where key=?",(key,)).fetchone():
+#			self.db.execute("update data set value=? where key=?",(item,key))
+		self.db.execute('INSERT OR REPLACE INTO data VALUES (NULL,"""%s""","""%s""")'%(key,item))
 		self.db.commit()
 		self[key] = item
 
@@ -95,7 +99,7 @@ def read_audio( URL , USER):
 		hrefs = [ h for h in hrefs if h.count('youtube.com')+h.count('youtu.be') ]   # FILTER: YOUTUBE ADDRESSES
 	return hrefs
 
-def gather_audio(filename, baseurl):
+def gather_audio(filename, baseurl, verbose=True):
 	""" Use database to download what we don't have yet! """
 	SONG_DB = quickDB( filename )                           # AUDIO DATABASE
 	MAX_MINUTES = 20
@@ -127,25 +131,28 @@ def gather_audio(filename, baseurl):
 		TITLE,DURATION = split[:]
 
 		# PARSING A BIT THE TITLE
-		for k,v in {"\[":"","\]":"","\'":"\'",'\"':"","\(":"","\)":""}.items(): TITLE.replace(k,v) #TITLE = re.sub(k,v,TITLE)
-		TITLE = re.sub('  *', ' ',TITLE)	
+		subs = { "\'+":"", '\"+':"" , "[.]+":"", "[/]+":"-", "  ":" - " }
+		for k,v in subs.items(): TITLE = re.sub(k,v,TITLE)
 		FILENAME = TITLE + '.mp3'
+
 		# PRINT OUT NEW FILE COORDINATES
-		print('-- %-50s (%s) @ %s '%(TITLE,DURATION,URL))
-		
+		if verbose:
+			sys.stdout.write('-- %-50s (%s) @ %s '%(TITLE,DURATION,URL))
+			sys.stdout.flush()
+
 		# DURATION CRITERIA (too long=true=skip) ; COMMENT EVENTUALLY OR MAX_MINUTES=0
 		times = DURATION.split(':')[::-1]
 		if MAX_MINUTES*(len(times)==3 or int( times[1] )>MAX_MINUTES):
-			#print("Duration is too long. We skip for now.")			
+			if verbose: sys.stdout.write('\n')		
 			continue
 
 		# TESTING FILE ACTUAL PRESENCE
 		if os.path.isfile(FILENAME):
 			SONG_DB.setitem( URL,TITLE )
+			if verbose: sys.stdout.write('\n')
 			continue
 
 		# RETRIEVE AUDIO FILE
-		print( " - Downloading audio..." )
 		output = None
 		command = 'youtube-dl --socket-timeout 10 --user-agent "{}" -o "{}.%(ext)s" -x --audio-format mp3 --prefer-ffmpeg {}'.format(USER,FILENAME[:-4],URL)
 		try:
@@ -154,12 +161,14 @@ def gather_audio(filename, baseurl):
 			time.sleep(0.5)
 		except Exception as this_exception:
 			print( "%s"%this_exception )
-			continue          
+			continue      
 		# SUCCESS: TAG THE FILE WITH URL
 		os.system('id3v2 --id3v2-only --song "%s" --comment "%s" "%s"'%(TITLE,URL.replace(':',''),FILENAME))
 		# WRITE DOWN URL+TITLE (DON'T DOWNLOAD TWICE, EVEN IF FILE IS REMOVED!)
 		SONG_DB.setitem( URL,TITLE )
-		print( '++ Saved as "%s"' % FILENAME )
+		# PRINT OUT NEW TITLE
+		print('\r++ %-50s (%s) @ %s '%(TITLE,DURATION,URL))
+
 
 #//////////////////////////////////////////////////////////////////////////////////////
 #//////////////////////////////////////////////////////////////////////////////////////
@@ -170,7 +179,8 @@ if __name__=='__main__':
 	optparser.add_option('-d','--directory',dest='directory',default='/home/duke/bot/pouetradio',help="Working directory")
 	optparser.add_option('-f','--filename',dest='database',default='pouet-audio',help="Database file name")
 	optparser.add_option('-b','--base',dest='urlbase',default='https://pouet.audio',help="Source URL")
-	optparser.add_option('-l','--list',dest='list',action='store_true', help="List actual database (complete list if no value, else returns what's correponsding to the given value in database)")
+	optparser.add_option('-l','--list',dest='list',action='store_true', help="List actual database according to arguments")
+	optparser.add_option('-v','--verbose',dest='verbose',action='store_true', help="Print out every new file (even skipped ones)")
 
 	opts,args = optparser.parse_args()  # PARSE ARGUMENTS & OPTIONS
 	FILENAME = opts.database            # DATABASE FILE NAME
@@ -190,6 +200,9 @@ if __name__=='__main__':
 	elif args and 'doc' in args:                                         # IF 'doc' IN ARGUMENTS:
 		print(__doc__)                                                   # THROW DOC
 		sys.exit(0)
-	else:                                                                # MAIN OPERATION:
+	else:  
+		TIME = time.time()                                               # MAIN OPERATION:
 		gather_audio( FILENAME, opts.urlbase )                           # GATHER SHARED AUDIO FROM GIVEN URL
-	
+		TIME = time.time()-TIME
+		print("-- executed in %d s"%TIME)
+
