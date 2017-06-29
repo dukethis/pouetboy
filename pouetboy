@@ -195,7 +195,7 @@ if __name__=='__main__':
 		sys.exit(0)
 	else:  
 		TIME = time.time()                                               # MAIN OPERATION:
-		gather_audio( FILENAME, opts.urlbase )                           # GATHER SHARED AUDIO FROM GIVEN URL
+		gather_audio( FILENAME, opts.urlbase, verbose=opts.verbose )     # GATHER SHARED AUDIO FROM GIVEN URL
 		TIME = time.time()-TIME
 		print("-- executed in %d s"%TIME)
 
