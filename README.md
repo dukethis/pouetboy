@@ -2,6 +2,7 @@
 <h3>Gather audio from https://pouet.audio</h3>
 
 <h3>Usage:</h3>
+
 <pre>
 $ pouetboy -h
 Usage: pouetboy [options]
