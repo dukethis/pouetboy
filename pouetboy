@@ -78,7 +78,7 @@ class quickDB(dict):
 
 	def setitem(self, key, item):
 		""" Write item corresponding to key into database (along with dictionary) """
-		self.db.execute('INSERT OR REPLACE INTO data VALUES (NULL,"""%s""","""%s""")'%(key,item))
+		self.db.execute('INSERT OR REPLACE INTO data VALUES (NULL,?,?)',(key,item))
 		self.db.commit()
 		self[key] = item
 
