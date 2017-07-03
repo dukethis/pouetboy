@@ -2,11 +2,13 @@
 <h3>Gather audio from https://pouet.audio</h3>
 
 <h3>Install:</h3>
-  + Make the script executable (ie, 'chmod +x pouetboy')
-  + Use the script by yourself:
-      + Copy the script into one of the PATH component (eg, /usr/bin/local, /usr/bin/, etc..)
-  + Use the script as an automated task:
-      + Edit your crontab file to schedule the script call, with 'crontab -e':
+
+<h4>Make the script executable (ie, 'chmod +x pouetboy')</h4>
+<h4>Use the script by yourself:</h4>
++ Copy the script into one of the PATH component (eg, /usr/bin/local, /usr/bin/, etc..)
+<h4>Use the script as an automated task:</h4>
++ Edit your crontab file to schedule the script call, with 'crontab -e':
+
 <pre>
 PATH=/home/duke/bin
 HOME=/home/duke/bin
