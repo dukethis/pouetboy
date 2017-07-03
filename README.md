@@ -45,18 +45,3 @@ Options:
   -l, --list            List actual database according to arguments
   -v, --verbose         Print out every new file (even skipped ones)
 </pre>
-
-<h3>Example:</h3>
-
-<pre>
-Date: Mon,  3 Jul 2017 10:04:02 +0200 (CEST)
-
--- Existing Database pouet-audio.sqlite (loaded: 217 files)
--- Looking on https://pouet.audio
-++ 6 new audio files
-++ Cerrone - Supernature (Official Video)             (3:52) @ https://m.youtube.com/watch?v=QgGK4qBTwpw 
-++ Stevie Ray Vaughan - Tin Pan Alley (aka Roughest Place In Town) - Live At Montreux85 (13:07) @ https://www.youtube.com/watch?v=RfhLbmUGKb8&list=WL&index=1 
-++ Becca Krueger Cover of Ray Charles Hit the Road Jack (4:40) @ https://www.youtube.com/watch?v=OfUDsHtSv88 
--- executed in 240 s
-
-</pre>
