@@ -9,10 +9,13 @@ $ sudo chmod +x pouetboy
 </pre>
 
 + Use the script by yourself:
+
 Copy the script into one of the PATH component (eg, /usr/bin/local, /usr/bin/, etc..)
 
 + Use the script as an automated task:
+
 Edit your crontab file to schedule the script call, with 'crontab -e':
+
 <pre>
 PATH=/home/duke/bin
 HOME=/home/duke/bin
